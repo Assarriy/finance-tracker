@@ -48,3 +48,34 @@ Route::post('/transactions', function (Request $request) {
     // Otomatis refresh data di frontend (Inertia magic)
     return redirect()->back();
 });
+
+// Route untuk nabung ke target (Goals)
+Route::post('/goals/add-funds', function (Illuminate\Http\Request $request) {
+    $validated = $request->validate([
+        'goal_id' => 'required|exists:goals,id',
+        'amount' => 'required|numeric|min:1'
+    ]);
+
+    // Cari target tabungan milik user yang lagi login, terus tambahin nominalnya
+    $goal = App\Models\Goal::where('user_id', auth()->id())
+        ->findOrFail($validated['goal_id']);
+
+    $goal->increment('current_amount', $validated['amount']);
+
+    return redirect()->back();
+});
+
+Route::post('/goals', function (Illuminate\Http\Request $request) {
+    $validated = $request->validate([
+        'title' => 'required|string|max:255',
+        'target_amount' => 'required|numeric|min:1',
+        'deadline' => 'nullable|date'
+    ]);
+
+    $validated['user_id'] = auth()->id();
+    $validated['current_amount'] = 0;
+
+    App\Models\Goal::create($validated);
+
+    return redirect()->back();
+});

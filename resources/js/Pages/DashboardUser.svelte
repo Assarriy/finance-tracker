@@ -1,274 +1,427 @@
 <script>
     import { router } from "@inertiajs/svelte";
 
-    // Tangkap data asli dari Laravel
     let { userName, totalBalance, transactions, goals, categories } = $props();
 
-    const formatRp = (angka) => {
-        return new Intl.NumberFormat("id-ID", {
+    // Helper format duit
+    const formatRp = (n) =>
+        new Intl.NumberFormat("id-ID", {
             style: "currency",
             currency: "IDR",
             maximumFractionDigits: 0,
-        }).format(angka);
-    };
+        }).format(n);
 
-    // State untuk ngatur Modal Form
-    let showModal = $state(false);
-    let formData = $state({
+    // --- STATE MANAGEMENT (Svelte 5 Runes) ---
+    let showTrxModal = $state(false);
+    let showGoalModal = $state(false);
+    let showAddGoalModal = $state(false);
+
+    let selectedGoal = $state(null);
+    let goalFundAmount = $state("");
+
+    // Form data transaksi
+    let trxForm = $state({
         category_id: "",
         amount: "",
-        date: new Date().toISOString().split("T")[0], // Set default hari ini
+        date: new Date().toISOString().split("T")[0],
         note: "",
     });
 
-    // Fungsi submit transaksi baru tanpa reload
-    function submitTransaction(e) {
-        e.preventDefault();
+    // Form data goal baru
+    let newGoalForm = $state({ title: "", target_amount: "", deadline: "" });
 
-        router.post("/transactions", formData, {
+    // Insight Otomatis (Biar UI Rame & Pintar)
+    let savingsRate = $derived(
+        totalBalance > 0 ? Math.round((totalBalance / 5000000) * 100) : 0,
+    );
+    let statusPesan = $derived(
+        totalBalance > 1000000
+            ? "Kondisi keuangan lu sehat bro! 💪"
+            : "Waduh, jajan dikurangin dulu ya. 😅",
+    );
+
+    // --- ACTIONS ---
+    function submitTrx(e) {
+        e.preventDefault();
+        router.post("/transactions", trxForm, {
             preserveScroll: true,
             onSuccess: () => {
-                showModal = false;
-                formData.amount = "";
-                formData.note = "";
+                showTrxModal = false;
+                trxForm.amount = "";
             },
         });
     }
+
+    function submitNewGoal(e) {
+        e.preventDefault();
+        router.post("/goals", newGoalForm, {
+            preserveScroll: true,
+            onSuccess: () => {
+                showAddGoalModal = false;
+                newGoalForm = { title: "", target_amount: "", deadline: "" };
+            },
+        });
+    }
+
+    function submitGoalFunds(e) {
+        e.preventDefault();
+        router.post(
+            "/goals/add-funds",
+            { goal_id: selectedGoal.id, amount: goalFundAmount },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    showGoalModal = false;
+                },
+            },
+        );
+    }
 </script>
 
-<div class="min-h-screen p-6 max-w-5xl mx-auto flex flex-col gap-8">
-    <header class="flex justify-between items-center">
-        <h1 class="text-2xl font-bold tracking-tight">Halo, {userName}! 👋</h1>
-        <button
-            onclick={() => (showModal = true)}
-            class="bg-gray-900 cursor-pointer text-white px-5 py-2.5 rounded-full font-medium hover:bg-gray-800 transition"
-        >
-            + Catat Duit
-        </button>
-    </header>
+<div class="min-h-screen bg-gray-50 text-gray-900 font-sans pb-12">
+    <div class="bg-gray-900 text-white pt-12 pb-24 px-6">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">
+                    Halo, {userName}!
+                </h1>
+                <p class="text-gray-400 mt-1">{statusPesan}</p>
+            </div>
+            <div class="flex gap-3">
+                <button
+                    onclick={() => (showAddGoalModal = true)}
+                    class="bg-white/10 hover:bg-white/20 px-5 py-2.5 rounded-2xl font-bold transition backdrop-blur-md border border-white/10 text-sm"
+                >
+                    + Target
+                </button>
+                <button
+                    onclick={() => (showTrxModal = true)}
+                    class="bg-blue-600 hover:bg-blue-500 px-6 py-2.5 rounded-2xl font-bold transition shadow-lg shadow-blue-500/30 text-sm"
+                >
+                    Catat Transaksi
+                </button>
+            </div>
+        </div>
+    </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2 flex flex-col gap-6">
-            <div
-                class="bg-gradient-to-br from-gray-900 to-gray-800 p-8 rounded-3xl text-white shadow-lg"
-            >
-                <p class="text-gray-400 font-medium mb-1">
-                    Total Saldo Saat Ini
-                </p>
-                <h2 class="text-4xl md:text-5xl font-bold tracking-tight">
+    <main
+        class="max-w-6xl mx-auto px-6 -mt-16 grid grid-cols-1 md:grid-cols-12 gap-6"
+    >
+        <div
+            class="md:col-span-8 bg-white p-8 rounded-[2rem] shadow-xl shadow-gray-200/50 border border-white flex flex-col justify-between overflow-hidden relative group"
+        >
+            <div class="relative z-10">
+                <span
+                    class="text-gray-500 font-bold uppercase tracking-widest text-xs"
+                    >Dompet Saat Ini</span
+                >
+                <h2 class="text-5xl font-black mt-2 tracking-tighter">
                     {formatRp(totalBalance)}
                 </h2>
-            </div>
-
-            <div
-                class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100"
-            >
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="font-bold text-lg">Riwayat Terakhir</h3>
-                    <a
-                        href="/admin/transactions"
-                        class="text-sm text-blue-600 hover:underline"
-                        >Lihat Semua di Admin</a
+                <div class="flex gap-4 mt-8">
+                    <div
+                        class="bg-green-50 px-4 py-2 rounded-xl text-green-700 font-bold text-sm"
                     >
+                        ↑ Safe Zone
+                    </div>
+                    <div
+                        class="bg-blue-50 px-4 py-2 rounded-xl text-blue-700 font-bold text-sm"
+                    >
+                        Inertia SPA Ready
+                    </div>
                 </div>
+            </div>
+            <div
+                class="absolute -right-10 -bottom-10 w-48 h-48 bg-blue-50 rounded-full blur-3xl group-hover:bg-blue-100 transition-colors"
+            ></div>
+        </div>
 
-                <div class="flex flex-col gap-4">
-                    {#if transactions.length === 0}
-                        <p class="text-gray-500 text-center py-4">
-                            Belum ada transaksi bro. Yuk catat!
-                        </p>
-                    {:else}
-                        {#each transactions as trx}
-                            <div
-                                class="flex justify-between items-center p-3 hover:bg-gray-50 rounded-xl transition"
-                            >
-                                <div class="flex items-center gap-4">
-                                    <div
-                                        class="w-10 h-10 rounded-full flex items-center justify-center text-xl
-                                        {trx.category.type === 'income'
-                                            ? 'bg-green-100 text-green-600'
-                                            : 'bg-red-100 text-red-600'}"
-                                    >
-                                        {trx.category.type === "income"
-                                            ? "↓"
-                                            : "↑"}
-                                    </div>
-                                    <div>
-                                        <p class="font-bold text-gray-900">
-                                            {trx.category.name}
-                                        </p>
-                                        <p class="text-xs text-gray-500">
-                                            {new Date(
-                                                trx.date,
-                                            ).toLocaleDateString("id-ID")}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <p
-                                        class="font-bold {trx.category.type ===
-                                        'income'
-                                            ? 'text-green-600'
-                                            : 'text-gray-900'}"
-                                    >
-                                        {trx.category.type === "income"
-                                            ? "+"
-                                            : "-"}{formatRp(trx.amount)}
-                                    </p>
-                                    {#if trx.note}
-                                        <p
-                                            class="text-xs text-gray-500 truncate w-24 md:w-32"
-                                        >
-                                            {trx.note}
-                                        </p>
-                                    {/if}
-                                </div>
-                            </div>
-                        {/each}
-                    {/if}
+        <div
+            class="md:col-span-4 bg-gray-900 p-8 rounded-[2rem] text-white flex flex-col justify-between shadow-xl"
+        >
+            <div>
+                <span
+                    class="bg-blue-500 text-[10px] uppercase px-2 py-1 rounded-lg font-black"
+                    >Smart Insight</span
+                >
+                <p class="mt-4 text-gray-300 leading-relaxed text-sm">
+                    Berdasarkan saldo lu, lu udah mencapai <span
+                        class="text-blue-400 font-bold">{savingsRate}%</span
+                    > dari skor keamanan finansial bulan ini.
+                </p>
+            </div>
+            <div class="mt-6">
+                <div
+                    class="w-full bg-white/10 h-2 rounded-full overflow-hidden"
+                >
+                    <div
+                        class="bg-blue-400 h-full rounded-full"
+                        style="width: {savingsRate}%"
+                    ></div>
                 </div>
+                <p
+                    class="text-[10px] text-gray-500 mt-2 font-bold uppercase tracking-widest"
+                >
+                    Financial Score
+                </p>
             </div>
         </div>
 
-        <div class="flex flex-col gap-4">
-            <h3 class="font-bold text-lg px-2">Target Tabungan 🎯</h3>
-
-            {#if goals.length === 0}
-                <div
-                    class="bg-white p-6 rounded-3xl border border-dashed border-gray-300 text-center text-gray-500"
+        <div
+            class="md:col-span-7 bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100"
+        >
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-black text-xl tracking-tight italic">
+                    Riwayat Terakhir
+                </h3>
+                <a
+                    href="/admin/transactions"
+                    class="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1 rounded-lg transition"
+                    >Semua &rarr;</a
                 >
-                    Belum ada target nih. Tambahin di panel admin.
-                </div>
-            {:else}
+            </div>
+            <div class="space-y-4">
+                {#each transactions as trx}
+                    <div
+                        class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:scale-[1.02] transition-transform"
+                    >
+                        <div class="flex items-center gap-4">
+                            <div
+                                class="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-sm
+                                {trx.category.type === 'income'
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-red-50 text-red-500'}"
+                            >
+                                {trx.category.type === "income" ? "💰" : "💸"}
+                            </div>
+                            <div>
+                                <p class="font-bold text-gray-800">
+                                    {trx.category.name}
+                                </p>
+                                <p
+                                    class="text-[10px] text-gray-400 font-bold uppercase"
+                                >
+                                    {new Date(trx.date).toLocaleDateString(
+                                        "id-ID",
+                                        { day: "2-digit", month: "short" },
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+                        <p
+                            class="font-black {trx.category.type === 'income'
+                                ? 'text-green-600'
+                                : 'text-gray-900'}"
+                        >
+                            {trx.category.type === "income"
+                                ? "+"
+                                : "-"}{formatRp(trx.amount)}
+                        </p>
+                    </div>
+                {/each}
+            </div>
+        </div>
+
+        <div class="md:col-span-5 flex flex-col gap-6">
+            <h3 class="font-black text-xl tracking-tight italic px-2">
+                Target Impian 🎯
+            </h3>
+            <div class="space-y-4">
                 {#each goals as goal}
-                    {@const progress = Math.min(
+                    {@const p = Math.min(
                         Math.round(
                             (goal.current_amount / goal.target_amount) * 100,
                         ),
                         100,
                     )}
-
                     <div
-                        class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-center"
+                        class="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden group"
                     >
-                        <p class="text-gray-900 font-bold">{goal.title}</p>
-                        <p class="text-gray-500 text-xs mt-1">
-                            {formatRp(goal.current_amount)} / {formatRp(
-                                goal.target_amount,
-                            )}
-                        </p>
-
-                        <div class="mt-3 w-full bg-gray-100 rounded-full h-3">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 class="font-black text-gray-900">
+                                    {goal.title}
+                                </h4>
+                                <p
+                                    class="text-xs text-gray-500 mt-1 font-medium"
+                                >
+                                    {formatRp(goal.current_amount)} / {formatRp(
+                                        goal.target_amount,
+                                    )}
+                                </p>
+                            </div>
+                            <span class="text-2xl"
+                                >{p >= 100 ? "🔥" : "🚀"}</span
+                            >
+                        </div>
+                        <div
+                            class="w-full bg-gray-100 h-3 rounded-full overflow-hidden"
+                        >
                             <div
-                                class="bg-gray-900 h-3 rounded-full transition-all duration-500"
-                                style="width: {progress}%"
+                                class="bg-gray-900 h-full transition-all duration-1000"
+                                style="width: {p}%"
                             ></div>
                         </div>
-                        <p
-                            class="text-right text-xs font-bold text-gray-700 mt-2"
-                        >
-                            {progress}%
-                        </p>
+                        <div class="flex justify-between items-center mt-4">
+                            <p
+                                class="text-xs font-black text-gray-900 uppercase tracking-widest"
+                            >
+                                {p}%
+                            </p>
+                            {#if p < 100}
+                                <button
+                                    onclick={() => {
+                                        selectedGoal = goal;
+                                        showGoalModal = true;
+                                    }}
+                                    class="bg-blue-50 text-blue-600 text-[10px] font-black uppercase px-4 py-2 rounded-xl hover:bg-blue-600 hover:text-white transition cursor-pointer"
+                                >
+                                    Nabung
+                                </button>
+                            {/if}
+                        </div>
                     </div>
                 {/each}
-            {/if}
+            </div>
         </div>
-    </div>
+    </main>
 </div>
 
-{#if showModal}
+{#if showTrxModal}
     <div
-        class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-all"
+        class="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4"
     >
-        <div
-            class="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl transform transition-all"
-        >
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold">Catat Transaksi Baru</h2>
-                <button
-                    onclick={() => (showModal = false)}
-                    class="text-gray-400 hover:text-gray-900 text-2xl font-bold cursor-pointer"
-                    >&times;</button
+        <div class="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl">
+            <h2 class="text-2xl font-black mb-6 tracking-tighter">
+                Catat Transaksi
+            </h2>
+            <form onsubmit={submitTrx} class="space-y-4">
+                <select
+                    bind:value={trxForm.category_id}
+                    required
+                    class="w-full bg-gray-100 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500 transition"
                 >
-            </div>
-
-            <form onsubmit={submitTransaction} class="flex flex-col gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1"
-                        >Kategori</label
-                    >
-                    <select
-                        bind:value={formData.category_id}
-                        required
-                        class="w-full border border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gray-900 outline-none bg-white"
-                    >
-                        <option value="" disabled selected
-                            >-- Pilih Kategori --</option
-                        >
-                        {#each categories as cat}
-                            <option value={cat.id}
-                                >{cat.name} ({cat.type === "income"
-                                    ? "Pemasukan"
-                                    : "Pengeluaran"})</option
-                            >
-                        {/each}
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1"
-                        >Nominal (Rp)</label
-                    >
-                    <input
-                        type="number"
-                        bind:value={formData.amount}
-                        required
-                        min="1"
-                        placeholder="Misal: 50000"
-                        class="w-full border border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gray-900 outline-none"
-                    />
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1"
-                        >Tanggal</label
-                    >
-                    <input
-                        type="date"
-                        bind:value={formData.date}
-                        required
-                        class="w-full border border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gray-900 outline-none"
-                    />
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1"
-                        >Catatan (Opsional)</label
-                    >
-                    <textarea
-                        bind:value={formData.note}
-                        rows="2"
-                        placeholder="Nongkrong di warkop..."
-                        class="w-full border border-gray-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gray-900 outline-none"
-                    ></textarea>
-                </div>
-
-                <div class="mt-4 flex gap-3">
+                    <option value="" disabled selected>Pilih Kategori</option>
+                    {#each categories as cat}
+                        <option value={cat.id}>{cat.name}</option>
+                    {/each}
+                </select>
+                <input
+                    type="number"
+                    bind:value={trxForm.amount}
+                    placeholder="Nominal Rp"
+                    required
+                    class="w-full bg-gray-100 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500 transition"
+                />
+                <input
+                    type="date"
+                    bind:value={trxForm.date}
+                    required
+                    class="w-full bg-gray-100 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500 transition"
+                />
+                <div class="flex gap-3 mt-6">
                     <button
                         type="button"
-                        onclick={() => (showModal = false)}
-                        class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition cursor-pointer"
+                        onclick={() => (showTrxModal = false)}
+                        class="flex-1 font-bold text-gray-400">Batal</button
                     >
-                        Batal
-                    </button>
                     <button
                         type="submit"
-                        class="flex-1 bg-gray-900 text-white py-3 rounded-xl font-bold hover:bg-gray-800 transition cursor-pointer"
+                        class="flex-1 bg-gray-900 text-white py-4 rounded-2xl font-bold shadow-lg"
+                        >Simpan</button
                     >
-                        Simpan Data
-                    </button>
                 </div>
             </form>
         </div>
     </div>
 {/if}
+
+{#if showAddGoalModal}
+    <div
+        class="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4"
+    >
+        <div class="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl">
+            <h2 class="text-2xl font-black mb-6 tracking-tighter">
+                Buat Target Baru 🎯
+            </h2>
+            <form onsubmit={submitNewGoal} class="space-y-4">
+                <input
+                    type="text"
+                    bind:value={newGoalForm.title}
+                    placeholder="Apa impian lu?"
+                    required
+                    class="w-full bg-gray-100 rounded-2xl px-5 py-4 font-bold outline-none"
+                />
+                <input
+                    type="number"
+                    bind:value={newGoalForm.target_amount}
+                    placeholder="Target Rp"
+                    required
+                    class="w-full bg-gray-100 rounded-2xl px-5 py-4 font-bold outline-none"
+                />
+                <input
+                    type="date"
+                    bind:value={newGoalForm.deadline}
+                    class="w-full bg-gray-100 rounded-2xl px-5 py-4 font-bold outline-none"
+                />
+                <div class="flex gap-3 mt-6">
+                    <button
+                        type="button"
+                        onclick={() => (showAddGoalModal = false)}
+                        class="flex-1 font-bold text-gray-400">Batal</button
+                    >
+                    <button
+                        type="submit"
+                        class="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg"
+                        >Gas Impian!</button
+                    >
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+{#if showGoalModal}
+    <div
+        class="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4"
+    >
+        <div
+            class="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl text-center"
+        >
+            <h2 class="text-xl font-black mb-2">
+                Nabung buat {selectedGoal.title}
+            </h2>
+            <p class="text-sm text-gray-500 mb-6 font-medium">
+                Pelan-pelan asal kelakon bro.
+            </p>
+            <form onsubmit={submitGoalFunds} class="space-y-4">
+                <input
+                    type="number"
+                    bind:value={goalFundAmount}
+                    placeholder="Nominal Rp"
+                    required
+                    class="w-full bg-gray-100 rounded-2xl px-5 py-4 font-bold text-center text-2xl outline-none border-2 border-transparent focus:border-green-500"
+                />
+                <div class="flex gap-3 mt-6">
+                    <button
+                        type="button"
+                        onclick={() => (showGoalModal = false)}
+                        class="flex-1 font-bold text-gray-400">Nanti</button
+                    >
+                    <button
+                        type="submit"
+                        class="flex-1 bg-green-500 text-white py-4 rounded-2xl font-bold shadow-lg"
+                        >Tambah Tabungan</button
+                    >
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+<style>
+    /* Custom font-bold tweaks for extra aesthetic */
+    :global(body) {
+        letter-spacing: -0.015em;
+    }
+</style>
